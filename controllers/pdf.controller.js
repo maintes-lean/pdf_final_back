@@ -1224,8 +1224,24 @@ function capitalize(value) {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
-function ensureSpace(doc, needed = 120) {
-  if (doc.y > doc.page.height - needed) {
+function ensureSpace(doc, requiredHeight = 80) {
+  const bottomLimit = doc.page.height - doc.page.margins.bottom - 70;
+
+  if (doc.y + requiredHeight >= bottomLimit) {
     doc.addPage();
   }
+}
+function drawPriceLine(doc, text) {
+  ensureSpace(doc, 42);
+
+  doc
+    .font(PDF_STYLE.fonts.bold)
+    .fontSize(10)
+    .fillColor(PDF_STYLE.colors.black)
+    .text(text, 58, doc.y, {
+      width: 480,
+      align: "left"
+    });
+
+  doc.moveDown(0.8);
 }
