@@ -37,6 +37,7 @@ const PORT = process.env.PORT || 3000;
 
 /* CORS */
 const allowedOrigins = new Set([
+  "https://pdfcosta.netlify.app",
   "https://pdfcostaazul.netlify.app",
   "http://localhost:5173",
   "http://127.0.0.1:5173",
@@ -46,13 +47,13 @@ const allowedOrigins = new Set([
 
 function isAllowedOrigin(origin) {
   if (!origin) return true;
+
   if (allowedOrigins.has(origin)) return true;
 
   try {
     const url = new URL(origin);
     const hostname = url.hostname.toLowerCase();
 
-    // Permite cualquier deploy de Netlify
     if (hostname.endsWith(".netlify.app")) return true;
 
     return false;
@@ -67,12 +68,16 @@ app.use(
       if (isAllowedOrigin(origin)) {
         return callback(null, true);
       }
+
       return callback(new Error(`Origen no permitido por CORS: ${origin}`));
     },
-    credentials: true
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"]
   })
 );
 
+app.options("*", cors());
 /* MIDDLEWARES */
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
