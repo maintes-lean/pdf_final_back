@@ -66,6 +66,17 @@ const PDF_STYLE = {
   }
 };
 
+const PDF_LAYOUT = {
+  left: 58,
+  right: 538,
+  contentWidth: 480,
+  priceLabelWidth: 365,
+  priceValueX: 425,
+  priceValueWidth: 113,
+  footerY: 812,
+  bottomReserve: 92
+};
+
 /* ===============================
    ENDPOINTS
 ================================ */
@@ -667,46 +678,74 @@ function drawServicesQuotation(doc, services = [], mode) {
 function drawVouchersSummary(doc, vouchers = [], publicBaseUrl = "") {
   if (!Array.isArray(vouchers) || !vouchers.length) return;
 
-  ensureSpace(doc, 120);
+  ensureSpace(doc, 135);
   drawDashedSeparator(doc);
 
-  doc.font(PDF_STYLE.fonts.monoBold).fontSize(9.5).fillColor(PDF_STYLE.colors.black).text("VOUCHERS Y PASAJES CARGADOS:", { width: 480 });
+  ensureSpace(doc, 45);
+  doc
+    .font(PDF_STYLE.fonts.monoBold)
+    .fontSize(9.5)
+    .fillColor(PDF_STYLE.colors.black)
+    .text("VOUCHERS Y PASAJES CARGADOS:", PDF_LAYOUT.left, doc.y, { width: PDF_LAYOUT.contentWidth });
   doc.moveDown(0.3);
 
   vouchers.forEach(voucher => {
+    const files = Array.isArray(voucher.files) ? voucher.files : [];
+    const estimatedHeight = 26 + Math.max(files.length, 1) * 16;
+    ensureSpace(doc, estimatedHeight);
+
     const parts = [
       voucher.tipo,
       voucher.proveedor,
       formatDateForPdf(voucher.fecha_asociada)
     ].filter(Boolean).filter(v => v !== "-");
 
-    doc.font(PDF_STYLE.fonts.mono).fontSize(8.5).fillColor(PDF_STYLE.colors.black).text(`- ${parts.join(" | ")}`, { width: 480 });
+    const voucherText = parts.length ? parts.join(" | ") : "Voucher / pasaje";
 
-    const files = Array.isArray(voucher.files) ? voucher.files : [];
+    doc
+      .font(PDF_STYLE.fonts.monoBold)
+      .fontSize(8.5)
+      .fillColor(PDF_STYLE.colors.black)
+      .text(`- ${voucherText}`, PDF_LAYOUT.left, doc.y, { width: PDF_LAYOUT.contentWidth, lineGap: 1 });
+
+    if (voucher.observaciones) {
+      ensureSpace(doc, 22);
+      doc
+        .font(PDF_STYLE.fonts.mono)
+        .fontSize(8)
+        .fillColor(PDF_STYLE.colors.gray)
+        .text(`  ${normalizeLongSpaces(voucher.observaciones)}`, PDF_LAYOUT.left, doc.y, { width: PDF_LAYOUT.contentWidth - 10, lineGap: 1 });
+    }
+
     files.forEach(file => {
+      ensureSpace(doc, 22);
+
       const label = file.original_name || file.stored_name || "archivo adjunto";
       const url = absolutePublicUrl(publicBaseUrl, file.public_url);
+      const text = `  Archivo: ${label}`;
 
       if (url) {
         doc
           .font(PDF_STYLE.fonts.mono)
           .fontSize(8)
-          .fillColor("#2563eb")
-          .text(`  Archivo: ${label}`, {
-            width: 470,
+          .fillColor(PDF_STYLE.colors.blue)
+          .text(text, PDF_LAYOUT.left, doc.y, {
+            width: PDF_LAYOUT.contentWidth - 10,
             link: url,
-            underline: true
+            underline: true,
+            lineGap: 1
           });
       } else {
         doc
           .font(PDF_STYLE.fonts.mono)
           .fontSize(8)
           .fillColor(PDF_STYLE.colors.gray)
-          .text(`  Archivo: ${label}`, { width: 470 });
+          .text(text, PDF_LAYOUT.left, doc.y, { width: PDF_LAYOUT.contentWidth - 10, lineGap: 1 });
       }
     });
 
-    doc.moveDown(files.length ? 0.25 : 0);
+    doc.fillColor(PDF_STYLE.colors.black);
+    doc.moveDown(files.length ? 0.45 : 0.3);
   });
 
   doc.fillColor(PDF_STYLE.colors.black);
@@ -837,22 +876,43 @@ function drawFooterBlock(doc, branding = DEFAULT_BRANDING) {
 
 function addPageFooters(doc, branding = DEFAULT_BRANDING, mode = "full") {
   const range = doc.bufferedPageRange();
-  const footerText = mode === "full" ? "Cotización con precios" : "Cotización sin precios";
+  if (!range || !range.count) return;
 
-  for (let i = range.start; i < range.start + range.count; i += 1) {
+  const footerText = mode === "full" ? "Cotización con precios" : "Cotización sin precios";
+  const lastPageIndex = range.start + range.count - 1;
+  const previousY = doc.y;
+
+  for (let i = range.start; i <= lastPageIndex; i += 1) {
     doc.switchToPage(i);
 
+    const originalMargins = { ...doc.page.margins };
+    const pageNumber = i - range.start + 1;
+    const text = `${branding.company_name || DEFAULT_BRANDING.company_name} · ${footerText} · Página ${pageNumber} de ${range.count}`;
+
+    // IMPORTANTE:
+    // PDFKit agrega una página nueva si se llama a text() por debajo del
+    // límite calculado con el margen inferior. Para evitar páginas fantasma,
+    // el footer se dibuja con coordenadas fijas y margen inferior temporal en 0.
+    doc.page.margins.bottom = 0;
+
     doc
+      .save()
       .font(PDF_STYLE.fonts.body)
       .fontSize(7.5)
       .fillColor(PDF_STYLE.colors.gray)
-      .text(
-        `${branding.company_name || DEFAULT_BRANDING.company_name} · ${footerText} · Página ${i + 1} de ${range.count}`,
-        58,
-        812,
-        { width: 480, align: "center" }
-      );
+      .text(text, PDF_LAYOUT.left, PDF_LAYOUT.footerY, {
+        width: PDF_LAYOUT.contentWidth,
+        align: "center",
+        lineBreak: false,
+        height: 10
+      })
+      .restore();
+
+    doc.page.margins = originalMargins;
   }
+
+  doc.switchToPage(lastPageIndex);
+  doc.y = previousY;
 }
 
 /* ===============================
@@ -899,6 +959,7 @@ function drawServiceText(doc, text) {
     .filter(Boolean);
 
   lines.forEach(line => {
+    ensureSpace(doc, 28);
     const normalized = normalizeLongSpaces(line);
     const highlight = shouldHighlightLine(normalized);
     const red = shouldUseRedLine(normalized);
@@ -925,6 +986,7 @@ function drawMetadataLines(doc, service, metadata = {}) {
   const lines = getServiceMetadataLines(service.categoria || service.tipo, metadata);
 
   lines.forEach(line => {
+    ensureSpace(doc, 24);
     doc.font(PDF_STYLE.fonts.mono).fontSize(8.6).fillColor(PDF_STYLE.colors.black).text(line, { width: 480 });
   });
 }
@@ -969,6 +1031,7 @@ function drawPassengerLine(doc, service) {
   if (adults) parts.push(`${adults} adulto${adults === 1 ? "" : "s"}`);
   if (minors) parts.push(`${minors} menor${minors === 1 ? "" : "es"}`);
 
+  ensureSpace(doc, 24);
   doc
     .font(PDF_STYLE.fonts.mono)
     .fontSize(8.6)
@@ -986,7 +1049,7 @@ function drawServicePriceLine(doc, service, metadata, category) {
   const price = `${currency} ${formatMoney(subtotal)}`;
 
   doc.moveDown(0.15);
-  drawRightAlignedValueLine(doc, label, price, {
+  drawPriceLine(doc, label, price, {
     font: PDF_STYLE.fonts.monoBold,
     fontSize: 8.6,
     color: PDF_STYLE.colors.black
@@ -1003,6 +1066,7 @@ function drawConfirmationLine(doc, service, metadata) {
   const cleaned = normalizeLongSpaces(raw);
   if (!cleaned) return;
 
+  ensureSpace(doc, 28);
   doc
     .font(PDF_STYLE.fonts.monoBold)
     .fontSize(8.6)
@@ -1011,23 +1075,36 @@ function drawConfirmationLine(doc, service, metadata) {
 }
 
 function drawRightAlignedValueLine(doc, label, value, options = {}) {
-  const y = doc.y;
-  const font = options.font || PDF_STYLE.fonts.mono;
-  const fontSize = options.fontSize || 8.6;
-
-  doc.font(font).fontSize(fontSize).fillColor(options.color || PDF_STYLE.colors.black);
-  doc.text(label, 58, y, { width: 370, lineBreak: false });
-  doc.text(value, 430, y, { width: 108, align: "right" });
-  doc.y = Math.max(doc.y, y + fontSize + 5);
+  return drawPriceLine(doc, label, value, options);
 }
 
 function drawHighlightedLine(doc, label, value, options = {}) {
-  const y = doc.y;
-  const height = 14;
+  const font = options.font || PDF_STYLE.fonts.monoBold;
+  const fontSize = options.fontSize || 8.6;
+  const lineGap = options.lineGap ?? 1;
+  const labelHeight = doc.heightOfString(String(label || ""), {
+    width: PDF_LAYOUT.priceLabelWidth,
+    lineGap
+  });
+  const valueHeight = doc.heightOfString(String(value || ""), {
+    width: PDF_LAYOUT.priceValueWidth,
+    align: "right",
+    lineGap
+  });
+  const height = Math.max(labelHeight, valueHeight, fontSize + 3) + 6;
 
-  doc.rect(58, y - 1, 480, height).fill(options.background || PDF_STYLE.colors.yellow);
+  ensureSpace(doc, height + 8);
+
+  const y = doc.y;
+  doc.rect(PDF_LAYOUT.left, y - 2, PDF_LAYOUT.contentWidth, height).fill(options.background || PDF_STYLE.colors.yellow);
   doc.fillColor(PDF_STYLE.colors.black);
-  drawRightAlignedValueLine(doc, label, value, options);
+
+  drawPriceLine(doc, label, value, {
+    ...options,
+    font,
+    fontSize,
+    skipEnsure: true
+  });
 }
 
 function drawHighlightedText(doc, text, options = {}) {
@@ -1225,23 +1302,64 @@ function capitalize(value) {
 }
 
 function ensureSpace(doc, requiredHeight = 80) {
-  const bottomLimit = doc.page.height - doc.page.margins.bottom - 70;
+  const safeHeight = Math.max(Number(requiredHeight) || 0, 0);
+  const bottomLimit = doc.page.height - doc.page.margins.bottom - PDF_LAYOUT.bottomReserve;
 
-  if (doc.y + requiredHeight >= bottomLimit) {
+  if (doc.y + safeHeight > bottomLimit) {
     doc.addPage();
+    doc.y = doc.page.margins.top;
   }
 }
-function drawPriceLine(doc, text) {
-  ensureSpace(doc, 42);
+
+function drawPriceLine(doc, label, value = "", options = {}) {
+  const font = options.font || PDF_STYLE.fonts.monoBold;
+  const fontSize = options.fontSize || 8.6;
+  const color = options.color || PDF_STYLE.colors.black;
+  const lineGap = options.lineGap ?? 1;
+  const labelText = String(label || "");
+  const valueText = String(value || "");
+
+  doc.font(font).fontSize(fontSize);
+
+  const labelHeight = doc.heightOfString(labelText, {
+    width: PDF_LAYOUT.priceLabelWidth,
+    lineGap
+  });
+  const valueHeight = valueText
+    ? doc.heightOfString(valueText, {
+        width: PDF_LAYOUT.priceValueWidth,
+        align: "right",
+        lineGap
+      })
+    : 0;
+  const height = Math.max(labelHeight, valueHeight, fontSize + 4) + 6;
+
+  if (!options.skipEnsure) {
+    ensureSpace(doc, height + 8);
+  }
+
+  const y = doc.y;
 
   doc
-    .font(PDF_STYLE.fonts.bold)
-    .fontSize(10)
-    .fillColor(PDF_STYLE.colors.black)
-    .text(text, 58, doc.y, {
-      width: 480,
-      align: "left"
+    .font(font)
+    .fontSize(fontSize)
+    .fillColor(color)
+    .text(labelText, PDF_LAYOUT.left, y, {
+      width: PDF_LAYOUT.priceLabelWidth,
+      lineGap
     });
 
-  doc.moveDown(0.8);
+  if (valueText) {
+    doc
+      .font(font)
+      .fontSize(fontSize)
+      .fillColor(color)
+      .text(valueText, PDF_LAYOUT.priceValueX, y, {
+        width: PDF_LAYOUT.priceValueWidth,
+        align: "right",
+        lineGap
+      });
+  }
+
+  doc.y = y + height;
 }
