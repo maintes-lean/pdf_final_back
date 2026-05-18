@@ -62,7 +62,6 @@ export const uploadVoucherFiles = async (req, res) => {
     for (const file of files) {
       const fileBuffer = fs.readFileSync(file.path);
 
-      const fileBuffer = fs.readFileSync(file.path);
 
 await VoucherFileModel.createVoucherFile(conn, {
   voucher_id: Number(voucherId),
