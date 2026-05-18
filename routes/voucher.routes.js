@@ -12,13 +12,21 @@ import {
 
 import {
   uploadVoucherFiles,
+  downloadPublicVoucherFile,
+  downloadVoucherFile,
   deleteVoucherFile
 } from "../controllers/voucher-file.controller.js";
 
 const router = express.Router();
 
 /* ===========================
-PROTEGER TODAS LAS RUTAS
+RUTA PÚBLICA PARA LINKS EN PDF
+Debe ir ANTES del authMiddleware.
+=========================== */
+router.get("/files/public/:token", downloadPublicVoucherFile);
+
+/* ===========================
+PROTEGER EL RESTO DE RUTAS
 =========================== */
 router.use(authMiddleware);
 
@@ -37,6 +45,7 @@ router.post(
   uploadVoucherFiles
 );
 
+router.get("/files/:fileId/download", downloadVoucherFile);
 router.delete("/files/:fileId", deleteVoucherFile);
 
 export default router;

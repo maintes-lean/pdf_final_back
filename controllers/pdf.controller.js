@@ -12,6 +12,21 @@ const pdfDir = path.join(__dirname, "../assets/pdfs");
 
 fs.mkdirSync(pdfDir, { recursive: true });
 
+function getPublicBaseUrl(req) {
+  const envUrl = String(process.env.PUBLIC_BACKEND_URL || process.env.BACKEND_PUBLIC_URL || "").trim();
+  if (envUrl) return envUrl.replace(/\/+$/, "");
+  const protocol = req.headers["x-forwarded-proto"] || req.protocol || "https";
+  const host = req.get?.("host") || req.headers.host || "";
+  return host ? `${protocol}://${host}` : "";
+}
+
+function absolutePublicUrl(baseUrl, relativeUrl) {
+  if (!relativeUrl) return "";
+  if (/^https?:\/\//i.test(relativeUrl)) return relativeUrl;
+  return `${String(baseUrl || "").replace(/\/+$/, "")}/${String(relativeUrl).replace(/^\/+/, "")}`;
+}
+
+
 /* ===============================
    FALLBACK BRANDING
 ================================ */
@@ -147,6 +162,42 @@ async function generatePdf(req, res, mode) {
       );
       vouchers = voucherRows || [];
 
+      if (vouchers.length) {
+        const voucherIds = vouchers.map(v => v.id);
+        const [fileRows] = await pool.query(
+          `
+          SELECT
+            id,
+            voucher_id,
+            original_name,
+            stored_name,
+            mime_type,
+            file_size,
+            public_token,
+            created_at
+          FROM voucher_files
+          WHERE voucher_id IN (?)
+          ORDER BY created_at DESC, id DESC
+          `,
+          [voucherIds]
+        );
+
+        const filesByVoucher = new Map();
+        (fileRows || []).forEach(file => {
+          const list = filesByVoucher.get(file.voucher_id) || [];
+          list.push({
+            ...file,
+            public_url: file.public_token ? `/api/vouchers/files/public/${file.public_token}` : null
+          });
+          filesByVoucher.set(file.voucher_id, list);
+        });
+
+        vouchers = vouchers.map(voucher => ({
+          ...voucher,
+          files: filesByVoucher.get(voucher.id) || []
+        }));
+      }
+
       const [operatorRows] = await pool.query(
         `
         SELECT *
@@ -160,6 +211,7 @@ async function generatePdf(req, res, mode) {
     }
 
     const branding = await getBrandingForProfile(userId, profile_id);
+    const publicBaseUrl = getPublicBaseUrl(req);
 
     const fileName = `cotizacion_${cotizacion_id}_${mode}_${Date.now()}.pdf`;
     const publicUrl = `/assets/pdfs/${fileName}`;
@@ -187,7 +239,8 @@ async function generatePdf(req, res, mode) {
       vouchers,
       operators,
       mode,
-      branding
+      branding,
+      publicBaseUrl
     });
 
     addPageFooters(doc, branding, mode);
@@ -422,13 +475,13 @@ function resolveAssetPath(filePathFromDb, fallback = null) {
 ================================ */
 
 function drawCostaAzulQuotation(doc, context) {
-  const { branding, quote, trip, client, services, vouchers, operators, mode } = context;
+  const { branding, quote, trip, client, services, vouchers, operators, mode, publicBaseUrl } = context;
 
   drawVisualCover(doc, branding);
   drawMainTitle(doc, quote, trip, mode);
   drawClientIntro(doc, client, quote, trip, mode);
   drawServicesQuotation(doc, services, mode);
-  drawVouchersSummary(doc, vouchers);
+  drawVouchersSummary(doc, vouchers, publicBaseUrl);
   drawOperatorsSummary(doc, operators);
   drawGrandTotal(doc, services, mode);
   drawFooterBlock(doc, branding);
@@ -611,7 +664,7 @@ function drawServicesQuotation(doc, services = [], mode) {
   });
 }
 
-function drawVouchersSummary(doc, vouchers = []) {
+function drawVouchersSummary(doc, vouchers = [], publicBaseUrl = "") {
   if (!Array.isArray(vouchers) || !vouchers.length) return;
 
   ensureSpace(doc, 120);
@@ -628,8 +681,35 @@ function drawVouchersSummary(doc, vouchers = []) {
     ].filter(Boolean).filter(v => v !== "-");
 
     doc.font(PDF_STYLE.fonts.mono).fontSize(8.5).fillColor(PDF_STYLE.colors.black).text(`- ${parts.join(" | ")}`, { width: 480 });
+
+    const files = Array.isArray(voucher.files) ? voucher.files : [];
+    files.forEach(file => {
+      const label = file.original_name || file.stored_name || "archivo adjunto";
+      const url = absolutePublicUrl(publicBaseUrl, file.public_url);
+
+      if (url) {
+        doc
+          .font(PDF_STYLE.fonts.mono)
+          .fontSize(8)
+          .fillColor("#2563eb")
+          .text(`  Archivo: ${label}`, {
+            width: 470,
+            link: url,
+            underline: true
+          });
+      } else {
+        doc
+          .font(PDF_STYLE.fonts.mono)
+          .fontSize(8)
+          .fillColor(PDF_STYLE.colors.gray)
+          .text(`  Archivo: ${label}`, { width: 470 });
+      }
+    });
+
+    doc.moveDown(files.length ? 0.25 : 0);
   });
 
+  doc.fillColor(PDF_STYLE.colors.black);
   doc.moveDown(0.6);
 }
 
@@ -730,8 +810,8 @@ function drawServiceMetadata(doc, tipo, metadata = {}) {
   lines.forEach(line => doc.font(PDF_STYLE.fonts.mono).fontSize(8.5).fillColor(PDF_STYLE.colors.black).text(line, { width: 480 }));
 }
 
-function drawVouchersBlock(doc, vouchers) {
-  drawVouchersSummary(doc, vouchers);
+function drawVouchersBlock(doc, vouchers, publicBaseUrl = "") {
+  drawVouchersSummary(doc, vouchers, publicBaseUrl);
 }
 
 function drawOperatorsBlock(doc, operators) {
