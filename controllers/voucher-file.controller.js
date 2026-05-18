@@ -3,6 +3,7 @@ import path from "path";
 import pool from "../config/db.js";
 import * as VoucherModel from "../models/voucher.model.js";
 import * as VoucherFileModel from "../models/voucher-file.model.js";
+import crypto from "crypto";
 
 function safeFileName(name = "archivo") {
   return String(name || "archivo")
