@@ -46,15 +46,15 @@ ADD FILE
 ========================================= */
 export async function createVoucherFile(conn, data) {
   const {
-    voucher_id,
-    original_name,
-    stored_name,
-    file_path,
-    mime_type,
-    file_size,
-    file_data,
-    public_token
-  } = data;
+  voucher_id,
+  original_name,
+  stored_name,
+  file_path,
+  mime_type,
+  file_size,
+  file_data,
+  public_token
+} = data;
 
   const token = public_token || crypto.randomBytes(32).toString("hex");
 
@@ -74,15 +74,15 @@ export async function createVoucherFile(conn, data) {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `,
     [
-      voucher_id,
-      original_name,
-      stored_name,
-      file_path,
-      mime_type || null,
-      file_size || null,
-      file_data || null,
-      token
-    ]
+  voucher_id,
+  original_name,
+  stored_name,
+  file_path,
+  mime_type || null,
+  file_size || null,
+  file_data || null,
+token
+]
   );
 
   return result.insertId;
