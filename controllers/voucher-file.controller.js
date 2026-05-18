@@ -61,15 +61,18 @@ export const uploadVoucherFiles = async (req, res) => {
     for (const file of files) {
       const fileBuffer = fs.readFileSync(file.path);
 
-      await VoucherFileModel.createVoucherFile(conn, {
-        voucher_id: Number(voucherId),
-        original_name: file.originalname,
-        stored_name: file.filename,
-        file_path: file.path.replace(/\\/g, "/"),
-        mime_type: file.mimetype,
-        file_size: file.size,
-        file_data: fileBuffer
-      });
+      const fileBuffer = fs.readFileSync(file.path);
+
+await VoucherFileModel.createVoucherFile(conn, {
+  voucher_id: Number(voucherId),
+  original_name: file.originalname,
+  stored_name: file.filename,
+  file_path: file.path.replace(/\\/g, "/"),
+  mime_type: file.mimetype,
+  file_size: file.size,
+  file_data: fileBuffer,
+  public_token: crypto.randomUUID().replace(/-/g, "")
+});
 
       try {
         fs.unlinkSync(file.path);
