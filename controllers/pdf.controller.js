@@ -70,11 +70,11 @@ const PDF_LAYOUT = {
   left: 58,
   right: 538,
   contentWidth: 480,
-  priceLabelWidth: 365,
-  priceValueX: 425,
-  priceValueWidth: 113,
-  footerY: 812,
-  bottomReserve: 92
+  priceLabelWidth: 480,
+  priceValueX: 58,
+  priceValueWidth: 480,
+  footerY: 790,
+  bottomReserve: 112
 };
 
 /* ===============================
@@ -718,11 +718,11 @@ function drawVouchersSummary(doc, vouchers = [], publicBaseUrl = "") {
     }
 
     files.forEach(file => {
-      ensureSpace(doc, 22);
+      ensureSpace(doc, 30);
 
-      const label = file.original_name || file.stored_name || "archivo adjunto";
+      const label = truncateMiddle(file.original_name || file.stored_name || "archivo adjunto", 58);
       const url = absolutePublicUrl(publicBaseUrl, file.public_url);
-      const text = `  Archivo: ${label}`;
+      const text = `  Archivo adjunto: ${label}`;
 
       if (url) {
         doc
@@ -730,7 +730,7 @@ function drawVouchersSummary(doc, vouchers = [], publicBaseUrl = "") {
           .fontSize(8)
           .fillColor(PDF_STYLE.colors.blue)
           .text(text, PDF_LAYOUT.left, doc.y, {
-            width: PDF_LAYOUT.contentWidth - 10,
+            width: PDF_LAYOUT.contentWidth,
             link: url,
             underline: true,
             lineGap: 1
@@ -740,7 +740,7 @@ function drawVouchersSummary(doc, vouchers = [], publicBaseUrl = "") {
           .font(PDF_STYLE.fonts.mono)
           .fontSize(8)
           .fillColor(PDF_STYLE.colors.gray)
-          .text(text, PDF_LAYOUT.left, doc.y, { width: PDF_LAYOUT.contentWidth - 10, lineGap: 1 });
+          .text(text, PDF_LAYOUT.left, doc.y, { width: PDF_LAYOUT.contentWidth, lineGap: 1 });
       }
     });
 
@@ -1287,6 +1287,17 @@ function normalizeLongSpaces(value) {
   return String(value || "").replace(/\t/g, " ").replace(/ {2,}/g, " ").trim();
 }
 
+function truncateMiddle(value, maxLength = 58) {
+  const text = String(value || "").trim();
+  if (text.length <= maxLength) return text;
+
+  const keep = Math.max(maxLength - 3, 12);
+  const left = Math.ceil(keep * 0.62);
+  const right = keep - left;
+
+  return `${text.slice(0, left)}...${text.slice(text.length - right)}`;
+}
+
 function formatMoney(value) {
   const number = Number(value || 0);
   return number.toLocaleString("en-US", {
@@ -1316,26 +1327,26 @@ function drawPriceLine(doc, label, value = "", options = {}) {
   const fontSize = options.fontSize || 8.6;
   const color = options.color || PDF_STYLE.colors.black;
   const lineGap = options.lineGap ?? 1;
-  const labelText = String(label || "");
-  const valueText = String(value || "");
+  const labelText = normalizeLongSpaces(label || "");
+  const valueText = normalizeLongSpaces(value || "");
 
   doc.font(font).fontSize(fontSize);
 
   const labelHeight = doc.heightOfString(labelText, {
-    width: PDF_LAYOUT.priceLabelWidth,
+    width: PDF_LAYOUT.contentWidth,
     lineGap
   });
   const valueHeight = valueText
     ? doc.heightOfString(valueText, {
-        width: PDF_LAYOUT.priceValueWidth,
+        width: PDF_LAYOUT.contentWidth,
         align: "right",
         lineGap
       })
     : 0;
-  const height = Math.max(labelHeight, valueHeight, fontSize + 4) + 6;
+  const height = labelHeight + (valueText ? valueHeight + 2 : 0) + 8;
 
   if (!options.skipEnsure) {
-    ensureSpace(doc, height + 8);
+    ensureSpace(doc, height + 12);
   }
 
   const y = doc.y;
@@ -1345,7 +1356,7 @@ function drawPriceLine(doc, label, value = "", options = {}) {
     .fontSize(fontSize)
     .fillColor(color)
     .text(labelText, PDF_LAYOUT.left, y, {
-      width: PDF_LAYOUT.priceLabelWidth,
+      width: PDF_LAYOUT.contentWidth,
       lineGap
     });
 
@@ -1354,8 +1365,8 @@ function drawPriceLine(doc, label, value = "", options = {}) {
       .font(font)
       .fontSize(fontSize)
       .fillColor(color)
-      .text(valueText, PDF_LAYOUT.priceValueX, y, {
-        width: PDF_LAYOUT.priceValueWidth,
+      .text(valueText, PDF_LAYOUT.left, y + labelHeight + 2, {
+        width: PDF_LAYOUT.contentWidth,
         align: "right",
         lineGap
       });
